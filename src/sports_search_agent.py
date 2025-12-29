@@ -102,6 +102,33 @@ class AgentResponse:
 # Traced LLM Helpers (for observability in Union UI)
 # =============================================================================
 
+def standardize_normalized_query(query: str) -> str:
+    """
+    Post-process normalized query to ensure consistent cache keys.
+
+    Even with temperature=0, LLMs can produce slight variations:
+    - "Who won the 2023 NBA Championship?"
+    - "Who won the 2023 NBA Championship"  (no question mark)
+
+    This function ensures identical cache keys for equivalent queries.
+    """
+    import re
+
+    # Strip whitespace
+    result = query.strip()
+
+    # Remove trailing punctuation (?, ., !)
+    result = re.sub(r'[?.!]+$', '', result)
+
+    # Normalize whitespace (multiple spaces -> single space)
+    result = re.sub(r'\s+', ' ', result)
+
+    # Lowercase for consistent matching
+    result = result.lower()
+
+    return result
+
+
 @flyte.trace
 async def llm_normalize(query: str) -> str:
     """Traced LLM call for query normalization."""
@@ -126,7 +153,11 @@ Normalized question:"""
         temperature=0,
         max_tokens=100,
     )
-    return response.choices[0].message.content.strip()
+
+    raw_normalized = response.choices[0].message.content.strip()
+
+    # Post-process for consistent cache keys
+    return standardize_normalized_query(raw_normalized)
 
 
 @flyte.trace
@@ -173,13 +204,13 @@ async def normalize_query(query: str) -> str:
     # Use traced helper for observability
     normalized = await llm_normalize(query)
 
-    print(f"[Normalize] Normalized query: {normalized}")
+    print(f"[Normalize] Normalized query (cache key): '{normalized}'")
 
     return normalized
 
 
 @search_env.task(
-    cache=flyte.Cache(behavior="auto", version_override="v2"),
+    cache=flyte.Cache(behavior="auto", version_override="v3"),
     retries=flyte.RetryStrategy(count=3),
 )
 async def search_sports_web(query: str, max_results: int = 5) -> List[SearchResult]:
@@ -233,7 +264,7 @@ async def search_sports_web(query: str, max_results: int = 5) -> List[SearchResu
 
 
 @llm_env.task(
-    cache=flyte.Cache(behavior="auto", version_override="v7"),
+    cache=flyte.Cache(behavior="auto", version_override="v8"),
     retries=flyte.RetryStrategy(count=3),
 )
 async def synthesize_response(
