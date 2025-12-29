@@ -5,7 +5,6 @@ A hosted API endpoint powered by Flyte v2 that anyone can access via URL.
 No local setup required for end users.
 """
 
-from dataclasses import asdict
 import flyte
 from flyte.app import AppEnvironment, Scaling
 from flyte.app.extras import FastAPIAppEnvironment
